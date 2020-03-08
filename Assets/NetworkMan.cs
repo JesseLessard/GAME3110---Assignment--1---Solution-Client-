@@ -30,11 +30,14 @@ public class NetworkMan : MonoBehaviour
 
         udp = new UdpClient();
         udp.Connect("52.15.219.197",12345);
-        Byte[] sendBytes = Encoding.ASCII.GetBytes("connect");
+        MsgConnectionRequest message = new MsgConnectionRequest();
+        message.cmd = commands.CONNECTION_REQUEST;
+        Byte[] sendBytes = Encoding.ASCII.GetBytes(JsonUtility.ToJson(message));
         udp.Send(sendBytes, sendBytes.Length);
         udp.BeginReceive(new AsyncCallback(OnReceived), udp);
 
         InvokeRepeating("HeartBeat", 1, 1);
+        InvokeRepeating("UpdateMe", 1, 0.01f);
     }
 
     void OnDestroy(){
@@ -42,15 +45,17 @@ public class NetworkMan : MonoBehaviour
     }
 
     [Serializable]
-        public struct receivedColor{
-            public float R;
-            public float G;
-            public float B;
-        }
+    public struct Position{
+        public float X;
+        public float Y;
+        public float Z;
+    }
+
+
     [Serializable]
     public class Player{
         public string id;
-        public receivedColor color;        
+        public Position position;        
     }
 
     [Serializable]
@@ -73,6 +78,24 @@ public class NetworkMan : MonoBehaviour
     }
 
     [Serializable]
+    public class MsgPositionUpdate
+    {
+        public commands cmd;
+        public Position position;
+    }
+
+    [Serializable]
+    public class MsgHeartBeat
+    {
+        public commands cmd;
+    }
+
+    [Serializable]
+    public class MsgConnectionRequest
+    {
+        public commands cmd;
+    }
+    [Serializable]
     public class MessageType{
         public commands cmd;
     }
@@ -82,6 +105,9 @@ public class NetworkMan : MonoBehaviour
         PLAYER_DISCONNECTED,
         CONNECTION_APPROVED,
         LIST_OF_PLAYERS,
+        POSITION_UPDATE,
+        HEARTBEAT,
+        CONNECTION_REQUEST
     };
     
     void OnReceived(IAsyncResult result){
@@ -157,7 +183,7 @@ public class NetworkMan : MonoBehaviour
                 if (player.id == myAddress)
                     continue;
                 currentPlayers.Add(player.id, Instantiate(playerGO, new Vector3(0,0,0), Quaternion.identity));
-                currentPlayers[player.id].GetComponent<Renderer>().material.color = new Color(player.color.R, player.color.G, player.color.B);
+                currentPlayers[player.id].transform.position = new Vector3(player.position.X,player.position.Y,player.position.Z);
                 currentPlayers[player.id].name = player.id;
             }
             initialSetofPlayers.players = new Player[0];
@@ -168,7 +194,7 @@ public class NetworkMan : MonoBehaviour
         if (lastestGameState.players.Length >0){
             foreach (NetworkMan.Player player in lastestGameState.players){
                 string playerID = player.id;
-                currentPlayers[player.id].GetComponent<Renderer>().material.color = new Color(player.color.R,player.color.G,player.color.B);
+                currentPlayers[player.id].transform.position = new Vector3(player.position.X,player.position.Y,player.position.Z);
             }
             lastestGameState.players = new Player[0];
         }
@@ -187,10 +213,21 @@ public class NetworkMan : MonoBehaviour
     }
     
     void HeartBeat(){
-        Byte[] sendBytes = Encoding.ASCII.GetBytes("heartbeat");
+        MsgHeartBeat message = new MsgHeartBeat();
+        message.cmd = commands.HEARTBEAT;
+        Byte[] sendBytes = Encoding.ASCII.GetBytes(JsonUtility.ToJson(message));
         udp.Send(sendBytes, sendBytes.Length);
     }
 
+    void UpdateMe(){
+        MsgPositionUpdate message = new MsgPositionUpdate();
+        message.cmd = commands.POSITION_UPDATE;
+        message.position.X = currentPlayers[myAddress].transform.position.x;
+        message.position.Y = currentPlayers[myAddress].transform.position.y;
+        message.position.Z = currentPlayers[myAddress].transform.position.z;
+        Byte[] sendBytes = Encoding.ASCII.GetBytes(JsonUtility.ToJson(message));
+        udp.Send(sendBytes, sendBytes.Length);
+    }
     void Update(){
         SpawnPlayers();
         UpdatePlayers();
